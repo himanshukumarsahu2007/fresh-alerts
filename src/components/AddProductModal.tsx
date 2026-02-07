@@ -56,36 +56,53 @@ const AddProductModal = ({ open, onOpenChange, onProductAdded }: AddProductModal
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Handle scanned results from URL params - only update fields with new scanned values
+  // Persist a draft between scans so values aren't omitted when navigating away
   useEffect(() => {
-    if (open) {
-      const scannedName = searchParams.get("scanned_product_name");
-      const scannedExpiry = searchParams.get("scanned_expiry_date");
-      
-      // Only update if there's a scanned value, don't clear existing form values
-      if (scannedName) {
-        setName(scannedName);
-      }
-      
-      if (scannedExpiry) {
-        setExpiryDate(scannedExpiry);
-      }
-      
-      // Clear URL params after reading them (do this once, preserving both reads)
-      if (scannedName || scannedExpiry) {
-        const newParams = new URLSearchParams(searchParams);
-        newParams.delete("scanned_product_name");
-        newParams.delete("scanned_expiry_date");
-        setSearchParams(newParams, { replace: true });
+    if (!open) return;
+
+    // 1) Restore draft (if any)
+    const draftRaw = sessionStorage.getItem("addProductDraft");
+    if (draftRaw) {
+      try {
+        const draft = JSON.parse(draftRaw) as {
+          name?: string;
+          category?: string;
+          expiryDate?: string;
+          notes?: string;
+        };
+
+        // Only fill empty fields to avoid overwriting what the user just typed
+        if (!name && draft.name) setName(draft.name);
+        if (category === "Other" && draft.category) setCategory(draft.category);
+        if (!expiryDate && draft.expiryDate) setExpiryDate(draft.expiryDate);
+        if (!notes && draft.notes) setNotes(draft.notes);
+      } catch {
+        // If draft is corrupt, ignore it
       }
     }
-  }, [open, searchParams, setSearchParams]);
+
+    // 2) Apply scanned results from URL params
+    const scannedName = searchParams.get("scanned_product_name");
+    const scannedExpiry = searchParams.get("scanned_expiry_date");
+
+    if (scannedName) setName(scannedName);
+    if (scannedExpiry) setExpiryDate(scannedExpiry);
+
+    // 3) Clear URL params after reading them (single replace)
+    if (scannedName || scannedExpiry) {
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete("scanned_product_name");
+      newParams.delete("scanned_expiry_date");
+      setSearchParams(newParams, { replace: true });
+    }
+  }, [open, searchParams, setSearchParams, name, category, expiryDate, notes]);
 
   const resetForm = () => {
     setName("");
     setCategory("Other");
     setExpiryDate("");
     setNotes("");
+    sessionStorage.removeItem("addProductDraft");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -119,6 +136,7 @@ const AddProductModal = ({ open, onOpenChange, onProductAdded }: AddProductModal
 
       toast.success("Product added successfully!");
       resetForm();
+      sessionStorage.removeItem("addProductDraft");
       onProductAdded();
       onOpenChange(false);
     } catch (error) {
@@ -130,6 +148,12 @@ const AddProductModal = ({ open, onOpenChange, onProductAdded }: AddProductModal
   };
 
   const handleScan = (type: "product_name" | "expiry_date") => {
+    // Save current draft so navigating to /scan won't drop already-entered/scanned values
+    sessionStorage.setItem(
+      "addProductDraft",
+      JSON.stringify({ name, category, expiryDate, notes })
+    );
+
     onOpenChange(false);
     navigate(`/scan?type=${type}`);
   };
