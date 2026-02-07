@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Camera, X, RotateCcw, Check, Loader2, ArrowLeft } from "lucide-react";
@@ -14,11 +14,12 @@ const ScanProduct = () => {
   const { user, loading } = useAuth();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [stream, setStream] = useState<MediaStream | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isStartingCamera, setIsStartingCamera] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -26,71 +27,121 @@ const ScanProduct = () => {
     }
   }, [user, loading, navigate]);
 
-  const startCamera = useCallback(async () => {
+  // Cleanup camera stream on unmount
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+    };
+  }, []);
+
+  // CRITICAL: This must be called directly from a click handler
+  const handleStartCamera = async () => {
     setCameraError(null);
+    setIsStartingCamera(true);
+    
     try {
+      console.log("Requesting camera access...");
+      
+      // Check if getUserMedia is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Camera API not available. Please use a modern browser.");
+      }
+
       // Request camera with back camera preference
-      const constraints = {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: { ideal: "environment" },
+          facingMode: "environment",
           width: { ideal: 1280 },
           height: { ideal: 720 },
         },
         audio: false,
-      };
-
-      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      });
+      
+      console.log("Camera access granted, setting up video...");
+      
+      // Store stream in ref for cleanup
+      streamRef.current = mediaStream;
       
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
         
-        // Wait for video to be ready
-        await new Promise<void>((resolve) => {
-          if (videoRef.current) {
-            videoRef.current.onloadedmetadata = () => {
-              resolve();
-            };
+        // Wait for video to be ready and play
+        await new Promise<void>((resolve, reject) => {
+          const video = videoRef.current;
+          if (!video) {
+            reject(new Error("Video element not available"));
+            return;
           }
+          
+          video.onloadedmetadata = async () => {
+            try {
+              await video.play();
+              console.log("Camera stream playing");
+              resolve();
+            } catch (playError) {
+              reject(playError);
+            }
+          };
+          
+          video.onerror = () => {
+            reject(new Error("Video element error"));
+          };
         });
         
-        await videoRef.current.play();
-        setStream(mediaStream);
         setIsCameraActive(true);
       }
     } catch (error) {
-      console.error("Error accessing camera:", error);
-      const errorName = (error as Error).name;
+      console.error("Camera error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      const errorName = error instanceof Error ? error.name : "";
       
-      if (errorName === "NotAllowedError") {
-        setCameraError("Camera access denied. Please allow camera permissions in your browser settings.");
+      if (errorName === "NotAllowedError" || errorMessage.includes("denied")) {
+        setCameraError("Camera access denied. Please allow camera access in your browser settings, then tap 'Try Again'.");
       } else if (errorName === "NotFoundError") {
         setCameraError("No camera found on this device.");
-      } else if (errorName === "NotReadableError") {
-        setCameraError("Camera is in use by another application.");
+      } else if (errorName === "NotReadableError" || errorName === "AbortError") {
+        setCameraError("Camera is in use by another app. Please close other camera apps and try again.");
+      } else if (errorName === "OverconstrainedError") {
+        // Try again with simpler constraints
+        try {
+          const simpleStream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+          streamRef.current = simpleStream;
+          if (videoRef.current) {
+            videoRef.current.srcObject = simpleStream;
+            await videoRef.current.play();
+            setIsCameraActive(true);
+            setIsStartingCamera(false);
+            return;
+          }
+        } catch {
+          setCameraError("Could not start camera. Please try again.");
+        }
       } else {
-        setCameraError("Could not access camera. Please check permissions.");
+        setCameraError(`Camera error: ${errorMessage}. Please check permissions and try again.`);
       }
+    } finally {
+      setIsStartingCamera(false);
     }
-  }, []);
+  };
 
-  const stopCamera = useCallback(() => {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      setStream(null);
-      setIsCameraActive(false);
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
     }
-  }, [stream]);
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraActive(false);
+  };
 
-  // Cleanup camera stream on unmount
-  useEffect(() => {
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-      }
-    };
-  }, [stream]);
-
-  const captureImage = useCallback(() => {
+  const captureImage = () => {
     if (videoRef.current && canvasRef.current) {
       const canvas = canvasRef.current;
       const video = videoRef.current;
@@ -104,12 +155,12 @@ const ScanProduct = () => {
         stopCamera();
       }
     }
-  }, [stopCamera]);
+  };
 
-  const retakePhoto = useCallback(() => {
+  const retakePhoto = () => {
     setCapturedImage(null);
-    startCamera();
-  }, [startCamera]);
+    // User will need to tap Start Camera again
+  };
 
   const processImage = async () => {
     if (!capturedImage) return;
@@ -182,37 +233,58 @@ const ScanProduct = () => {
 
       {/* Camera View */}
       <div className="relative flex flex-1 items-center justify-center">
+        {/* Error state */}
         {cameraError && (
           <div className="flex flex-col items-center gap-4 p-8 text-center">
-            <Camera className="h-16 w-16 text-muted-foreground" />
-            <p className="text-white">{cameraError}</p>
-            <Button onClick={startCamera} variant="secondary">
-              Try Again
+            <Camera className="h-16 w-16 text-red-400" />
+            <p className="text-white max-w-xs">{cameraError}</p>
+            <Button onClick={handleStartCamera} variant="secondary" size="lg" disabled={isStartingCamera}>
+              {isStartingCamera ? (
+                <>
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  Starting...
+                </>
+              ) : (
+                <>
+                  <Camera className="mr-2 h-5 w-5" />
+                  Try Again
+                </>
+              )}
             </Button>
           </div>
         )}
 
+        {/* Initial state - waiting for user to start camera */}
         {!cameraError && !isCameraActive && !capturedImage && (
           <div className="flex flex-col items-center gap-4 p-8 text-center">
-            <Camera className="h-16 w-16 text-muted-foreground" />
-            <p className="text-white">Tap to start the camera</p>
-            <Button onClick={startCamera} variant="secondary" size="lg">
-              <Camera className="mr-2 h-5 w-5" />
-              Start Camera
+            <Camera className="h-16 w-16 text-white/70" />
+            <p className="text-white">Tap the button to open your camera</p>
+            <Button onClick={handleStartCamera} variant="secondary" size="lg" disabled={isStartingCamera}>
+              {isStartingCamera ? (
+                <>
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  Opening Camera...
+                </>
+              ) : (
+                <>
+                  <Camera className="mr-2 h-5 w-5" />
+                  Open Camera
+                </>
+              )}
             </Button>
           </div>
         )}
 
-        {isCameraActive && !capturedImage && (
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="h-full w-full object-cover"
-          />
-        )}
+        {/* Active camera view */}
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className={`h-full w-full object-cover ${isCameraActive && !capturedImage ? '' : 'hidden'}`}
+        />
 
+        {/* Captured image preview */}
         {capturedImage && (
           <img
             src={capturedImage}
