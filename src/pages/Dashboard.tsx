@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,7 @@ interface Product {
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, loading, signOut } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -42,6 +43,14 @@ const Dashboard = () => {
       navigate("/auth");
     }
   }, [user, loading, navigate]);
+
+  // Auto-open modal when returning from scan
+  useEffect(() => {
+    const hasScannedData = searchParams.get("scanned_product_name") || searchParams.get("scanned_expiry_date");
+    if (hasScannedData) {
+      setAddModalOpen(true);
+    }
+  }, [searchParams]);
 
   const fetchProducts = async () => {
     if (!user) return;
