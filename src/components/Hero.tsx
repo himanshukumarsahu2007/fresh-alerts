@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { ArrowRight, Leaf } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -23,13 +24,15 @@ const Hero = () => {
       </p>
 
       {/* CTA */}
-      <Button
-        size="lg"
-        className="animate-fade-in gap-2 rounded-full px-8 opacity-0 [animation-delay:300ms]"
-      >
-        Get Started
-        <ArrowRight className="h-4 w-4" />
-      </Button>
+      <Link to="/auth">
+        <Button
+          size="lg"
+          className="animate-fade-in gap-2 rounded-full px-8 opacity-0 [animation-delay:300ms]"
+        >
+          Get Started
+          <ArrowRight className="h-4 w-4" />
+        </Button>
+      </Link>
     </section>
   );
 };
