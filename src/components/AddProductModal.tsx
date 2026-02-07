@@ -56,22 +56,27 @@ const AddProductModal = ({ open, onOpenChange, onProductAdded }: AddProductModal
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Handle scanned results from URL params
+  // Handle scanned results from URL params - only update fields with new scanned values
   useEffect(() => {
     if (open) {
       const scannedName = searchParams.get("scanned_product_name");
       const scannedExpiry = searchParams.get("scanned_expiry_date");
       
+      // Only update if there's a scanned value, don't clear existing form values
       if (scannedName) {
         setName(scannedName);
-        searchParams.delete("scanned_product_name");
-        setSearchParams(searchParams, { replace: true });
       }
       
       if (scannedExpiry) {
         setExpiryDate(scannedExpiry);
-        searchParams.delete("scanned_expiry_date");
-        setSearchParams(searchParams, { replace: true });
+      }
+      
+      // Clear URL params after reading them (do this once, preserving both reads)
+      if (scannedName || scannedExpiry) {
+        const newParams = new URLSearchParams(searchParams);
+        newParams.delete("scanned_product_name");
+        newParams.delete("scanned_expiry_date");
+        setSearchParams(newParams, { replace: true });
       }
     }
   }, [open, searchParams, setSearchParams]);
