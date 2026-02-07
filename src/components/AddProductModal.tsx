@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,7 +20,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Camera, Loader2 } from "lucide-react";
-import CameraScanner from "./CameraScanner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -47,13 +47,34 @@ const categories = [
 ];
 
 const AddProductModal = ({ open, onOpenChange, onProductAdded }: AddProductModalProps) => {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const [name, setName] = useState("");
   const [category, setCategory] = useState("Other");
   const [expiryDate, setExpiryDate] = useState("");
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [scannerType, setScannerType] = useState<"product_name" | "expiry_date" | null>(null);
+
+  // Handle scanned results from URL params
+  useEffect(() => {
+    if (open) {
+      const scannedName = searchParams.get("scanned_product_name");
+      const scannedExpiry = searchParams.get("scanned_expiry_date");
+      
+      if (scannedName) {
+        setName(scannedName);
+        searchParams.delete("scanned_product_name");
+        setSearchParams(searchParams, { replace: true });
+      }
+      
+      if (scannedExpiry) {
+        setExpiryDate(scannedExpiry);
+        searchParams.delete("scanned_expiry_date");
+        setSearchParams(searchParams, { replace: true });
+      }
+    }
+  }, [open, searchParams, setSearchParams]);
 
   const resetForm = () => {
     setName("");
@@ -103,124 +124,110 @@ const AddProductModal = ({ open, onOpenChange, onProductAdded }: AddProductModal
     }
   };
 
-  const handleScanResult = (result: string) => {
-    if (scannerType === "product_name") {
-      setName(result);
-    } else if (scannerType === "expiry_date") {
-      setExpiryDate(result);
-    }
-    setScannerType(null);
+  const handleScan = (type: "product_name" | "expiry_date") => {
+    onOpenChange(false);
+    navigate(`/scan?type=${type}`);
   };
 
   return (
-    <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add New Product</DialogTitle>
-            <DialogDescription>
-              Add a product to track its expiry date. Use the camera to scan labels automatically.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Product Name</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g., Milk, Bread, Yogurt"
-                  required
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setScannerType("product_name")}
-                  title="Scan product name"
-                >
-                  <Camera className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="category">Category</Label>
-              <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((cat) => (
-                    <SelectItem key={cat} value={cat}>
-                      {cat}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="expiry">Expiry Date</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="expiry"
-                  type="date"
-                  value={expiryDate}
-                  onChange={(e) => setExpiryDate(e.target.value)}
-                  required
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setScannerType("expiry_date")}
-                  title="Scan expiry date"
-                >
-                  <Camera className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="notes">Notes (optional)</Label>
-              <Textarea
-                id="notes"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Any additional notes..."
-                rows={2}
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add New Product</DialogTitle>
+          <DialogDescription>
+            Add a product to track its expiry date. Use the camera to scan labels automatically.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="name">Product Name</Label>
+            <div className="flex gap-2">
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g., Milk, Bread, Yogurt"
+                required
               />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => handleScan("product_name")}
+                title="Scan product name"
+              >
+                <Camera className="h-4 w-4" />
+              </Button>
             </div>
+          </div>
 
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Adding...
-                  </>
-                ) : (
-                  "Add Product"
-                )}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+          <div className="space-y-2">
+            <Label htmlFor="category">Category</Label>
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select category" />
+              </SelectTrigger>
+              <SelectContent>
+                {categories.map((cat) => (
+                  <SelectItem key={cat} value={cat}>
+                    {cat}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-      {scannerType && (
-        <CameraScanner
-          scanType={scannerType}
-          onResult={handleScanResult}
-          onClose={() => setScannerType(null)}
-        />
-      )}
-    </>
+          <div className="space-y-2">
+            <Label htmlFor="expiry">Expiry Date</Label>
+            <div className="flex gap-2">
+              <Input
+                id="expiry"
+                type="date"
+                value={expiryDate}
+                onChange={(e) => setExpiryDate(e.target.value)}
+                required
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => handleScan("expiry_date")}
+                title="Scan expiry date"
+              >
+                <Camera className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="notes">Notes (optional)</Label>
+            <Textarea
+              id="notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Any additional notes..."
+              rows={2}
+            />
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                "Add Product"
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 };
 
