@@ -194,6 +194,7 @@ const ScanProduct = () => {
       toast.success(`${scanType === "product_name" ? "Product name" : "Expiry date"} detected!`);
       
       // Navigate back to dashboard with the scanned result
+      // The modal restores any in-progress draft from sessionStorage.
       navigate(`/dashboard?scanned_${scanType}=${encodeURIComponent(result)}`);
     } catch (error) {
       console.error("Error processing image:", error);
