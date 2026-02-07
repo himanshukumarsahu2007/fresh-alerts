@@ -21,17 +21,40 @@ const CameraScanner = ({ scanType, onResult, onClose }: CameraScannerProps) => {
 
   const startCamera = useCallback(async () => {
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
-      });
+      // Try back camera first with explicit constraints
+      let mediaStream: MediaStream;
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { 
+            facingMode: { exact: "environment" }, 
+            width: { ideal: 1280 }, 
+            height: { ideal: 720 } 
+          },
+        });
+      } catch {
+        // Fallback to any available camera if back camera fails
+        console.log("Back camera not available, trying any camera");
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        });
+      }
+      
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
-        setStream(mediaStream);
-        setIsCameraActive(true);
+        // Wait for video to be ready before setting state
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current?.play();
+          setStream(mediaStream);
+          setIsCameraActive(true);
+        };
       }
     } catch (error) {
       console.error("Error accessing camera:", error);
-      toast.error("Could not access camera. Please check permissions.");
+      if ((error as Error).name === "NotAllowedError") {
+        toast.error("Camera access denied. Please check your browser permissions.");
+      } else {
+        toast.error("Could not access camera. Please check permissions.");
+      }
     }
   }, []);
 
