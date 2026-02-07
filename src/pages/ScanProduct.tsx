@@ -81,17 +81,14 @@ const ScanProduct = () => {
     }
   }, [stream]);
 
-  // Auto-start camera on mount
+  // Cleanup camera stream on unmount
   useEffect(() => {
-    if (!loading && user) {
-      startCamera();
-    }
     return () => {
       if (stream) {
         stream.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [loading, user]);
+  }, [stream]);
 
   const captureImage = useCallback(() => {
     if (videoRef.current && canvasRef.current) {
@@ -196,9 +193,13 @@ const ScanProduct = () => {
         )}
 
         {!cameraError && !isCameraActive && !capturedImage && (
-          <div className="flex flex-col items-center gap-4">
-            <Loader2 className="h-8 w-8 animate-spin text-white" />
-            <p className="text-white">Starting camera...</p>
+          <div className="flex flex-col items-center gap-4 p-8 text-center">
+            <Camera className="h-16 w-16 text-muted-foreground" />
+            <p className="text-white">Tap to start the camera</p>
+            <Button onClick={startCamera} variant="secondary" size="lg">
+              <Camera className="mr-2 h-5 w-5" />
+              Start Camera
+            </Button>
           </div>
         )}
 
